@@ -1,9 +1,16 @@
 package org.springframework.ingest.config;
 
+import java.io.File;
+
 import javax.sql.DataSource;
 
+import org.apache.commons.io.FileUtils;
+
+import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
+import org.springframework.batch.core.StepExecution;
+import org.springframework.batch.core.StepExecutionListener;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
@@ -19,11 +26,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.ResourceLoader;
+import org.springframework.core.env.Environment;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
 
 import org.springframework.ingest.domain.Person;
 import org.springframework.ingest.mapper.fieldset.PersonFieldSetMapper;
 import org.springframework.ingest.processor.PersonItemProcessor;
+import org.springframework.ingest.resource.RemoteResource;
+import org.springframework.ingest.resource.sftp.SftpRemoteResource;
 
 /**
  * Class used to configure the batch job related beans.
@@ -33,27 +44,49 @@ import org.springframework.ingest.processor.PersonItemProcessor;
 @Configuration
 @EnableBatchProcessing
 public class BatchConfiguration {
+	private final Environment env;
 	private final DataSource dataSource;
-	private final ResourceLoader resourceLoader;
 	private final JobBuilderFactory jobBuilderFactory;
 	private final StepBuilderFactory stepBuilderFactory;
 
 	@Autowired
-	public BatchConfiguration(final DataSource dataSource, final JobBuilderFactory jobBuilderFactory,
-							final StepBuilderFactory stepBuilderFactory,
-							final ResourceLoader resourceLoader) {
+	public BatchConfiguration(final Environment env, final DataSource dataSource,
+				final JobBuilderFactory jobBuilderFactory, final StepBuilderFactory stepBuilderFactory) {
+		this.env = env;
 		this.dataSource = dataSource;
-		this.resourceLoader = resourceLoader;
 		this.jobBuilderFactory = jobBuilderFactory;
 		this.stepBuilderFactory = stepBuilderFactory;
 	}
 
 	@Bean
 	@StepScope
-	public ItemStreamReader<Person> reader(@Value("#{jobParameters['filePath']}") String filePath) throws Exception {
+	public StepExecutionListener ingestStepExecutionListener(@Value("#{jobParameters['remoteFilePath']}") String remoteFilePath,
+								@Value("#{jobParameters['localFilePath']}") String localFilePath) {
+			return new StepExecutionListener() {
+				@Override
+				public void beforeStep(StepExecution stepExecution) {
+					try {
+						Resource fetchedResource = remoteResource().getResource(remoteFilePath);
+						FileUtils.copyInputStreamToFile(fetchedResource.getInputStream(), new File(localFilePath));
+					}
+					catch (Exception e) {
+						throw new RuntimeException("Could not write remote file to local disk", e);
+					}
+				}
+
+				@Override
+				public ExitStatus afterStep(StepExecution stepExecution) {
+					return null;
+				}
+			};
+	}
+
+	@Bean
+	@StepScope
+	public ItemStreamReader<Person> reader(@Value("#{jobParameters['localFilePath']}") String localFilePath) throws Exception {
 		return new FlatFileItemReaderBuilder<Person>()
 			.name("reader")
-			.resource(resourceLoader.getResource(filePath))
+			.resource(new FileSystemResource(localFilePath))
 			.delimited()
 			.names(new String[] {"firstName", "lastName"})
 			.fieldSetMapper(new PersonFieldSetMapper())
@@ -90,6 +123,16 @@ public class BatchConfiguration {
 			.reader(reader(null))
 			.processor(processor())
 			.writer(writer())
+			.listener(ingestStepExecutionListener(null, null))
 			.build();
+	}
+
+	@Bean
+	public RemoteResource remoteResource() {
+		Integer port = env.getProperty("sftp_port") != null
+			? Integer.valueOf(env.getProperty("sftp_port")) : null;
+
+		return new SftpRemoteResource(env.getProperty("sftp_host"), port,
+					env.getProperty("sftp_username"), env.getProperty("sftp_password"));
 	}
 }

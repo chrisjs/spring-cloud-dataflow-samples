@@ -17,6 +17,9 @@
         <spring.batch.starter.version>2.0.0.M5</spring.batch.starter.version>
         <checkstyle.config.location>checkstyle.xml</checkstyle.config.location>
         <checkstyle.plugin.version>2.17</checkstyle.plugin.version>
+        <spring.integration.version>4.3.12.RELEASE</spring.integration.version>
+        <commons.io.version>2.4</commons.io.version>
+        <sshd.core.version>1.6.0</sshd.core.version>
     </properties>
     <dependencies>
         <dependency>
@@ -36,6 +39,27 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-task-batch</artifactId>
             <version>${spring.cloud.task.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>${commons.io.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.integration</groupId>
+            <artifactId>spring-integration-file</artifactId>
+            <version>${spring.integration.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.integration</groupId>
+            <artifactId>spring-integration-sftp</artifactId>
+            <version>${spring.integration.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.sshd</groupId>
+            <artifactId>sshd-core</artifactId>
+            <version>${sshd.core.version}</version>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>junit</groupId>
